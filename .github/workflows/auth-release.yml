@@ -274,6 +274,93 @@ jobs:
                   allowUpdates: true
                   updateOnlyUnreleased: true
 
+    build-windows-arm64:
+        runs-on: windows-11-arm
+        environment: "auth-win-build"
+
+        defaults:
+            run:
+                working-directory: mobile/apps/auth
+
+        steps:
+            - name: Checkout code and submodules
+              uses: actions/checkout@v4
+              with:
+                  submodules: recursive
+
+            - name: Install Flutter ${{ env.FLUTTER_VERSION  }}
+              uses: subosito/flutter-action@v2
+              with:
+                  channel: "stable"
+                  flutter-version: ${{ env.FLUTTER_VERSION  }}
+                  cache: true
+                  architecture: arm64
+
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: aarch64-pc-windows-msvc
+
+            - name: Generate strings localizations
+              run: flutter gen-l10n
+              working-directory: mobile/packages/strings
+
+            - name: Create artifacts directory
+              run: mkdir artifacts
+
+            - name: Build Windows ARM64 installer
+              run: |
+                  flutter config --enable-windows-desktop
+                  dart pub global activate --source git https://github.com/ente-io/fastforgefork --git-ref develop --git-path packages/fastforge
+                  choco install innosetup -y
+                  # Build Flutter app for Windows ARM64
+                  flutter build windows --release
+                  # Update Inno Setup script for ARM64 architecture
+                  sed -i 's/ArchitecturesAllowed=x64compatible/ArchitecturesAllowed=arm64/' windows/packaging/exe/inno_setup.iss
+                  sed -i 's/ArchitecturesInstallIn64BitMode=x64compatible/ArchitecturesInstallIn64BitMode=arm64/' windows/packaging/exe/inno_setup.iss
+                  # Package the app
+                  fastforge.bat package --platform=windows --targets=exe --skip-clean
+                  shopt -s globstar
+                  mv dist/**/*-windows-setup.exe artifacts/ente-${{ github.ref_name }}-arm64-installer.exe
+              shell: bash
+
+            - name: Retain Windows ARM64 EXE and DLLs
+              run: cp -r build/windows/arm64/runner/Release ente-${{ github.ref_name }}-windows-arm64
+              shell: bash
+
+            - name: Sign files with Trusted Signing
+              uses: azure/trusted-signing-action@v0
+              with:
+                azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+                endpoint: ${{ secrets.AZURE_ENDPOINT }}
+                trusted-signing-account-name: ${{ secrets.AZURE_CODE_SIGNING_NAME }}
+                certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE_NAME }}
+                files: |
+                      ${{ github.workspace }}/mobile/apps/auth/artifacts/ente-${{ github.ref_name }}-arm64-installer.exe
+                      ${{ github.workspace }}/mobile/apps/auth/ente-${{ github.ref_name }}-windows-arm64/auth.exe
+                file-digest: SHA256
+                timestamp-rfc3161: http://timestamp.acs.microsoft.com
+                timestamp-digest: SHA256
+
+
+            - name: Zip Windows ARM64 EXE and DLLs
+              run: tar.exe -a -c -f artifacts/ente-${{ github.ref_name }}-windows-arm64.zip ente-${{ github.ref_name }}-windows-arm64
+              shell: bash
+
+            - name: Generate checksums
+              run: sha256sum artifacts/ente-* > artifacts/sha256sum-windows-arm64
+              shell: bash
+
+            - name: Create a draft GitHub release
+              uses: ncipollo/release-action@v1
+              with:
+                  artifacts: "mobile/apps/auth/artifacts/*"
+                  draft: true
+                  allowUpdates: true
+                  updateOnlyUnreleased: true
+
     build-macos:
         runs-on: macos-15
 
