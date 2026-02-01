@@ -342,7 +342,7 @@ jobs:
                       ${{ github.workspace }}/mobile/apps/auth/ente-${{ github.ref_name }}-windows-arm64/auth.exe
                 file-digest: SHA256
                 timestamp-rfc3161: http://timestamp.acs.microsoft.com
-                timestamp-digest: SHA256  
+                timestamp-digest: SHA256
 
 
             - name: Zip Windows ARM64 EXE and DLLs
